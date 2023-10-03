@@ -121,6 +121,56 @@ class FilesController {
     }
     return null;
   }
+
+  static async getShow(request, response) {
+    const user = await FilesController.getUser(request);
+    if (!user) {
+      return response.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = request.params;
+
+    try {
+      const files = dbClient.db.collection('files');
+      const fileObjectID = new ObjectID(id);
+      const file = await files.findOne({ _id: fileObjectID, userId: user._id });
+
+      if (!file) {
+        return response.status(404).json({ error: 'Not found' });
+      }
+
+      return response.json(file);
+    } catch (error) {
+      console.error(error);
+      return response.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  static async getIndex(request, response) {
+    const user = await FilesController.getUser(request);
+    if (!user) {
+      return response.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { parentId, page } = request.query;
+
+    try {
+      const files = dbClient.db.collection('files');
+      const parentFileId = parentId ? new ObjectID(parentId) : 0;
+      const skip = page ? page * 20 : 0;
+
+      const fileDocuments = await files
+        .find({ userId: user._id, parentId: parentFileId })
+        .skip(skip)
+        .limit(20)
+        .toArray();
+
+      return response.json(fileDocuments);
+    } catch (error) {
+      console.error(error);
+      return response.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
 }
 
 module.exports = FilesController;
