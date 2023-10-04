@@ -122,54 +122,52 @@ class FilesController {
     return null;
   }
 
-  static async getShow(request, response) {
-    const user = await FilesController.getUser(request);
-    if (!user) {
-      return response.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { id } = request.params;
-
-    try {
-      const files = dbClient.db.collection('files');
-      const fileObjectID = new ObjectID(id);
-      const file = await files.findOne({ _id: fileObjectID, userId: user._id });
-
-      if (!file) {
-        return response.status(404).json({ error: 'Not found' });
-      }
-
-      return response.json(file);
-    } catch (error) {
-      console.error(error);
-      return response.status(500).json({ error: 'Internal Server Error' });
-    }
-  }
-
   static async getIndex(request, response) {
     const user = await FilesController.getUser(request);
     if (!user) {
       return response.status(401).json({ error: 'Unauthorized' });
     }
-
-    const { parentId, page } = request.query;
-
-    try {
-      const files = dbClient.db.collection('files');
-      const parentFileId = parentId ? new ObjectID(parentId) : 0;
-      const skip = page ? page * 20 : 0;
-
-      const fileDocuments = await files
-        .find({ userId: user._id, parentId: parentFileId })
-        .skip(skip)
-        .limit(20)
-        .toArray();
-
-      return response.json(fileDocuments);
-    } catch (error) {
-      console.error(error);
-      return response.status(500).json({ error: 'Internal Server Error' });
+    const {
+      parentId,
+      page,
+    } = request.query;
+    const pageNum = page || 0;
+    const files = dbClient.db.collection('files');
+    let query;
+    if (!parentId) {
+      query = { userId: user._id };
+    } else {
+      query = { userId: user._id, parentId: ObjectID(parentId) };
     }
+    files.aggregate(
+      [
+        { $match: query },
+        { $sort: { _id: -1 } },
+        {
+          $facet: {
+            metadata: [{ $count: 'total' }, { $addFields: { page: parseInt(pageNum, 10) } }],
+            data: [{ $skip: 20 * parseInt(pageNum, 10) }, { $limit: 20 }],
+          },
+        },
+      ],
+    ).toArray((err, result) => {
+      if (result) {
+        const final = result[0].data.map((file) => {
+          const tmpFile = {
+            ...file,
+            id: file._id,
+          };
+          delete tmpFile._id;
+          delete tmpFile.localPath;
+          return tmpFile;
+        });
+        // console.log(final);
+        return response.status(200).json(final);
+      }
+      console.log('Error occured');
+      return response.status(404).json({ error: 'Not found' });
+    });
+    return null;
   }
 }
 
